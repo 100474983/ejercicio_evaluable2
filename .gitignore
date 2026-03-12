@@ -1,0 +1,6 @@
+*
+!*/
+!.gitignore
+!ejecucion.txt
+!*.c
+!*.h
