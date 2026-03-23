@@ -11,7 +11,7 @@ int sendMessage(int socket, char *buffer, int len)
         r = write(socket, buffer, l);
         l = l - r;
         buffer = buffer + r;
-    } while ((l > 0) && (r >= 0));
+    } while ((l > 0) && (r > 0));
 
     if (r < 0)
         return -1;
@@ -28,7 +28,7 @@ int recvMessage(int socket, char *buffer, int len)
         r = read(socket, buffer, l);
         l = l - r;
         buffer = buffer + r;
-    } while ((l > 0) && (r >= 0));
+    } while ((l > 0) && (r > 0));
 
     if (r < 0)
         return -1;
