@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #include "claves.h"
 #include "lines.h"
@@ -207,6 +209,11 @@ static int handle_client(int sc) {
     return 0;
 }
 
+static void sigchld_handler(int sig) {
+    (void)sig;
+    while (waitpid(-1, NULL, WNOHANG) > 0);
+}
+
 int main(int argc, char *argv[]) {
 
     struct sockaddr_in server_addr, client_addr;
@@ -215,6 +222,9 @@ int main(int argc, char *argv[]) {
     int server_port = 0;
     int val;
     int err;
+
+    /* Handler para evitar procesos zombie */
+    signal(SIGCHLD, sigchld_handler);
 
     if (argc != 2 || parse_port_arg(argv[1], &server_port) < 0) {
         printf("Uso: %s <puerto>\n", argv[0]);
@@ -258,17 +268,35 @@ int main(int argc, char *argv[]) {
 
         if (sc == -1){
             printf("Error en accept\n");
-            return -1;
+            continue;
         }
 
         printf("Conexion aceptada de %s:%d\n",
             inet_ntoa(client_addr.sin_addr),
             ntohs(client_addr.sin_port));
 
-        if (handle_client(sc) == -1) {
-            printf("Error procesando peticion de cliente\n");
+        /* ───── CONCURRENCIA CON FORK ───── */
+        pid_t pid = fork();
+
+        if (pid < 0) {
+            perror("Error en fork");
+            close(sc);
+            continue;
         }
 
+        if (pid == 0) {
+            /* HIJO */
+            close(sd);
+
+            if (handle_client(sc) == -1) {
+                printf("Error procesando peticion de cliente\n");
+            }
+
+            close(sc);
+            exit(0);
+        }
+
+        /* PADRE */
         close(sc);
     }
 
