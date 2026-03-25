@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,8 +125,16 @@ static int connect_server(void) {
     server_addr.sin_port = htons((uint16_t)server_port); // Convertir el puerto a orden de bytes de red
     // Convertir la dirección IP del servidor de texto a formato binario con la función inet_pton()
     if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) != 1) {
-        close(sd);
-        return -1;
+
+        // Si la dirección IP no es válida, intentamos resolverla como un nombre de host utilizando la función gethostbyname()
+        struct hostent *he = gethostbyname(server_ip); // Convertimos el nombre de host a una estructura hostent
+        // Si la resolución falla, cerramos el socket y retornamos -1 para indicar un error
+        if (he == NULL) {
+            close(sd);
+            return -1;
+        }
+        // Copiamos la dirección IP resuelta al campo sin_addr de la estructura server_addr utilizando memcpy()
+        memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
     }
 
     // Nos conectamos al servidor usanod el socket creado y la dirección configurada
