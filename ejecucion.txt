@@ -1,10 +1,17 @@
-En servidor (ya que usa el puerto 4200 por defecto)
+- En servidor (ya que usa el puerto 4200 por defecto)
+    export LD_LIBRARY_PATH=.
+    ./servidor-sock 4200
 
-export LD_LIBRARY_PATH=.
-./servidor-sock 4200
+- En cliente si se usa dirección IP
+    export LD_LIBRARY_PATH=.
+    export IP_TUPLAS=127.0.0.1
+    export PORT_TUPLAS=4200
+    ./app-cliente-dist
+    ./app-cliente-dist2
 
-En cliente
-export LD_LIBRARY_PATH=.
-export IP_TUPLAS=127.0.0.1
-export PORT_TUPLAS=4200
-./app-cliente-dist
+- En cliente si se usa DNS
+    export LD_LIBRARY_PATH=.
+    export IP_TUPLAS=localhost
+    export PORT_TUPLAS=4200
+    ./app-cliente-dist
+    ./app-cliente-dist2

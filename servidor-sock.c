@@ -7,8 +7,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <sys/wait.h>
-#include <signal.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #include "claves.h"
 #include "lines.h"
@@ -21,6 +21,31 @@ enum {
     OP_EXIST = 5,
     OP_DESTROY = 6
 };
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+sem_t sem;
+
+static int handle_client(int sc);
+
+void *thread_client(void *arg) {
+    int sc = *(int *)arg;
+    free(arg);
+
+    if (handle_client(sc) == -1) {
+        printf("Error procesando peticion de cliente\n");
+    }
+
+    close(sc);
+
+    /* libera slot */
+    sem_post(&sem);
+
+    int val;
+    sem_getvalue(&sem, &val);
+    printf("[SERVIDOR] Cliente terminado. Slots libres: %d\n", val);
+
+    return NULL;
+}
 
 static int parse_port_arg(const char *arg, int *port_out) {
     char *endptr = NULL;
@@ -120,10 +145,15 @@ static int handle_client(int sc) {
                 recv_int32(sc, &z) < 0) {
                 return -1;
             }
+
             p.x = (int)x;
             p.y = (int)y;
             p.z = (int)z;
+
+            pthread_mutex_lock(&mutex);
             result = set_value(key, value1, (int)n_value2, v_value2, p);
+            pthread_mutex_unlock(&mutex);
+
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
@@ -133,14 +163,21 @@ static int handle_client(int sc) {
             if (recv_fixed_string(sc, key) < 0) {
                 return -1;
             }
+
             {
                 int n_local = 0;
+
+                pthread_mutex_lock(&mutex);
                 result = get_value(key, value1, &n_local, v_value2, &p);
+                pthread_mutex_unlock(&mutex);
+
                 n_value2 = n_local;
             }
+
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
+
             if (result == 0) {
                 if (send_fixed_string(sc, value1) < 0 ||
                     send_int32(sc, n_value2) < 0 ||
@@ -163,10 +200,15 @@ static int handle_client(int sc) {
                 recv_int32(sc, &z) < 0) {
                 return -1;
             }
+
             p.x = (int)x;
             p.y = (int)y;
             p.z = (int)z;
+
+            pthread_mutex_lock(&mutex);
             result = modify_value(key, value1, (int)n_value2, v_value2, p);
+            pthread_mutex_unlock(&mutex);
+
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
@@ -176,7 +218,11 @@ static int handle_client(int sc) {
             if (recv_fixed_string(sc, key) < 0) {
                 return -1;
             }
+
+            pthread_mutex_lock(&mutex);
             result = delete_key(key);
+            pthread_mutex_unlock(&mutex);
+
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
@@ -186,14 +232,21 @@ static int handle_client(int sc) {
             if (recv_fixed_string(sc, key) < 0) {
                 return -1;
             }
+
+            pthread_mutex_lock(&mutex);
             result = exist(key);
+            pthread_mutex_unlock(&mutex);
+
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
             break;
 
         case OP_DESTROY:
+            pthread_mutex_lock(&mutex);
             result = destroy();
+            pthread_mutex_unlock(&mutex);
+
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
@@ -209,22 +262,18 @@ static int handle_client(int sc) {
     return 0;
 }
 
-static void sigchld_handler(int sig) {
-    (void)sig;
-    while (waitpid(-1, NULL, WNOHANG) > 0);
-}
-
 int main(int argc, char *argv[]) {
-
     struct sockaddr_in server_addr, client_addr;
     socklen_t size;
-    int sd, sc;
+    int sd;
     int server_port = 0;
     int val;
     int err;
 
-    /* Handler para evitar procesos zombie */
-    signal(SIGCHLD, sigchld_handler);
+    if (sem_init(&sem, 0, 10) != 0) {
+        perror("Error en sem_init");
+        return -1;
+    }
 
     if (argc != 2 || parse_port_arg(argv[1], &server_port) < 0) {
         printf("Uso: %s <puerto>\n", argv[0]);
@@ -232,7 +281,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    if ((sd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+    if ((sd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         printf("SERVER: Error en socket\n");
         return -1;
     }
@@ -241,65 +290,71 @@ int main(int argc, char *argv[]) {
     setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, (char *)&val, sizeof(int));
 
     bzero((char *)&server_addr, sizeof(server_addr));
-
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons((uint16_t)server_port);
 
     err = bind(sd, (const struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (err == -1){
+    if (err == -1) {
         printf("Error en bind\n");
+        close(sd);
         return -1;
     }
 
     err = listen(sd, SOMAXCONN);
-    if (err == -1){
+    if (err == -1) {
         printf("Error en listen\n");
+        close(sd);
         return -1;
     }
 
     size = sizeof(client_addr);
 
-    while(1){
-
+    while (1) {
         printf("Esperando conexion...\n");
 
-        sc = accept(sd, (struct sockaddr *)&client_addr, &size);
+        int sc = accept(sd, (struct sockaddr *)&client_addr, &size);
 
-        if (sc == -1){
+        if (sc == -1) {
             printf("Error en accept\n");
             continue;
         }
 
         printf("Conexion aceptada de %s:%d\n",
-            inet_ntoa(client_addr.sin_addr),
-            ntohs(client_addr.sin_port));
+               inet_ntoa(client_addr.sin_addr),
+               ntohs(client_addr.sin_port));
 
-        /* ───── CONCURRENCIA CON FORK ───── */
-        pid_t pid = fork();
+        /* espera antes de crear más de 10 hilos activos */
+        sem_wait(&sem);
 
-        if (pid < 0) {
-            perror("Error en fork");
+        int val;
+        sem_getvalue(&sem, &val);
+        printf("[SERVIDOR] Cliente aceptado. Slots libres: %d\n", val);
+
+        pthread_t tid;
+
+        int *pclient = malloc(sizeof(int));
+        if (pclient == NULL) {
+            perror("Error en malloc");
             close(sc);
+            sem_post(&sem);
             continue;
         }
 
-        if (pid == 0) {
-            /* HIJO */
-            close(sd);
+        *pclient = sc;
 
-            if (handle_client(sc) == -1) {
-                printf("Error procesando peticion de cliente\n");
-            }
-
+        if (pthread_create(&tid, NULL, thread_client, pclient) != 0) {
+            perror("Error creando hilo");
             close(sc);
-            exit(0);
+            free(pclient);
+            sem_post(&sem);
+            continue;
         }
 
-        /* PADRE */
-        close(sc);
+        pthread_detach(tid);
     }
 
     close(sd);
+    sem_destroy(&sem);
     return 0;
 }

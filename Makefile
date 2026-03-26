@@ -17,13 +17,17 @@ CLIENT_LOCAL = app-cliente-local
 CLIENT_SRC = app-cliente.c
 CLIENT_OBJ = app-cliente.o
 
+CLIENT2 = app-cliente-dist2
+CLIENT2_SRC = app-cliente2.c
+CLIENT2_OBJ = app-cliente2.o
+
 CLIENT_DIST = app-cliente-dist
 
 SERVER = servidor-sock
 SERVER_SRC = servidor-sock.c
 SERVER_OBJ = servidor-sock.o
 
-all: $(LIB_LOCAL) $(LIB_PROXY) $(CLIENT_LOCAL) $(CLIENT_DIST) $(SERVER)
+all: $(LIB_LOCAL) $(LIB_PROXY) $(CLIENT_LOCAL) $(CLIENT2) $(CLIENT_DIST) $(SERVER)
 
 $(LIB_LOCAL): $(LIB_LOCAL_OBJ)
 	$(CC) -shared -o $(LIB_LOCAL) $(LIB_LOCAL_OBJ)
@@ -43,6 +47,12 @@ $(LINES_OBJ): $(LINES_SRC)
 $(CLIENT_LOCAL): $(CLIENT_OBJ)
 	$(CC) -o $(CLIENT_LOCAL) $(CLIENT_OBJ) -L. -lclaves $(LDFLAGS)
 
+$(CLIENT2): $(CLIENT2_OBJ)
+	$(CC) -o $(CLIENT2) $(CLIENT2_OBJ) -L. -lproxyclaves $(LDFLAGS)
+
+$(CLIENT2_OBJ): $(CLIENT2_SRC)
+	$(CC) $(CFLAGS) -c $(CLIENT2_SRC)
+
 $(CLIENT_DIST): $(CLIENT_OBJ)
 	$(CC) -o $(CLIENT_DIST) $(CLIENT_OBJ) -L. -lproxyclaves $(LDFLAGS)
 
@@ -56,4 +66,4 @@ $(SERVER_OBJ): $(SERVER_SRC)
 	$(CC) $(CFLAGS) -c $(SERVER_SRC)
 
 clean:
-	rm -f *.o *.so $(CLIENT_LOCAL) $(CLIENT_DIST) $(SERVER)
+	rm -f *.o *.so $(CLIENT_LOCAL) $(CLIENT2) $(CLIENT_DIST) $(SERVER)
