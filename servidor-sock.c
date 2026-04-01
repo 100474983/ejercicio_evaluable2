@@ -13,6 +13,7 @@
 #include "claves.h"
 #include "lines.h"
 
+// Definimos un enum para las operaciones que el cliente puede solicitar al servidor
 enum {
     OP_SET_VALUE = 1,
     OP_GET_VALUE = 2,
@@ -22,24 +23,30 @@ enum {
     OP_DESTROY = 6
 };
 
+// Definimos un mutex para proteger el acceso a las funciones de claves y 
+// un semáforo para limitar el número de clientes concurrentes
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 sem_t sem;
 
 static int handle_client(int sc);
 
+// Función que se ejecuta en cada hilo para atender a un cliente
 void *thread_client(void *arg) {
+    // El argumento es un puntero a un entero que contiene el descriptor de socket del cliente
     int sc = *(int *)arg;
     free(arg);
 
+    // Si sucede un error al procesar la petición del cliente, se imprime un mensaje y se cierra el socket
     if (handle_client(sc) == -1) {
         printf("Error procesando peticion de cliente\n");
     }
 
     close(sc);
 
-    /* libera slot */
+    // Al finalizar la atención al cliente, liberamos un slot en el semáforo para permitir que otro cliente pueda ser atendido
     sem_post(&sem);
 
+    // Imprimimos el número de slots libres después de atender al cliente (útil para depuración y pruebas)
     int val;
     sem_getvalue(&sem, &val);
     printf("[SERVIDOR] Cliente terminado. Slots libres: %d\n", val);
@@ -47,22 +54,31 @@ void *thread_client(void *arg) {
     return NULL;
 }
 
+// Lee un puerto en formato string y lo convierte a entero, validando que sea un número válido entre 1 y 65535
 static int parse_port_arg(const char *arg, int *port_out) {
-    char *endptr = NULL;
-    long parsed;
+    char *endptr = NULL; // Puntero para almacenar el final de la cadena analizada
+    long parsed; // Variable para almacenar el valor del puerto después de la conversión
 
+    // Validamos que el argumento no sea NULL ni una cadena vacía, y que el puntero de salida no sea NULL
     if (arg == NULL || *arg == '\0' || port_out == NULL) {
         return -1;
     }
 
+    // Parseamos el argumento a un número entero usando strtol, con base 10
     parsed = strtol(arg, &endptr, 10);
     if (endptr == arg || *endptr != '\0' || parsed < 1 || parsed > 65535) {
         return -1;
     }
 
+    // Si la conversión tiene éxito, parseamos el número a un entero y lo asignamos al puntero de salida
     *port_out = (int)parsed;
     return 0;
 }
+/*=========================================
+  FUNCIONES DE ENVÍO Y RECEPCIÓN DEL SOCKET
+  =========================================
+  Son iguales que las funciones declaradas en proxy-sock.c
+*/
 
 static int send_int32(int sd, int32_t value) {
     int32_t net_value = htonl(value);
@@ -119,23 +135,27 @@ static int recv_fixed_string(int sd, char *value) {
     return 0;
 }
 
+// Función para manejar la petición de un cliente, procesando la operación solicitada y enviando la respuesta correspondiente
 static int handle_client(int sc) {
-    int32_t op;
+    int32_t op; // Variable para almacenar la operación solicitada por el cliente
 
-    char key[256];
-    char value1[256];
-    int32_t n_value2;
-    float v_value2[32];
-    int32_t x, y, z;
-    struct Paquete p;
-    int result;
+    char key[256]; // Variable para almacenar la clave recibida del cliente
+    char value1[256]; // Variable para almacenar el valor1 recibido del cliente (cadena de caracteres)
+    int32_t n_value2; // Variable para almacenar el valor de N_value2 recibido del cliente (entero)
+    float v_value2[32]; // Variable para almacenar el array de floats V_value2 recibido del cliente
+    int32_t x, y, z; // Variables para almacenar los valores de x, y, z de la estructura Paquete recibidos del cliente
+    struct Paquete p; // Variable para almacenar la estructura Paquete con los valores de x, y, z recibidos del cliente
+    int result; // Variable para almacenar el resultado de la operación que se enviará al cliente
 
+    // Si la operación solicitada por el cliente no se puede recibir correctamente, retornamos -1 para indicar un error
     if (recv_int32(sc, &op) < 0) {
         return -1;
     }
 
+    // Creamos un switch para procesar la operación solicitada por el cliente.
     switch (op) {
         case OP_SET_VALUE:
+        // Comprobamos que todas las operaciones de recepción se realicen correctamente. Si alguna falla, retornamos -1 para indicar un error
             if (recv_fixed_string(sc, key) < 0 ||
                 recv_fixed_string(sc, value1) < 0 ||
                 recv_int32(sc, &n_value2) < 0 ||
@@ -145,39 +165,47 @@ static int handle_client(int sc) {
                 recv_int32(sc, &z) < 0) {
                 return -1;
             }
-
+            // Asignamos los valores recibidos a la estructura Paquete
             p.x = (int)x;
             p.y = (int)y;
             p.z = (int)z;
 
+            // Protegemos la llamada a set_value con el mutex para evitar condiciones de carrera entre clientes concurrentes
             pthread_mutex_lock(&mutex);
             result = set_value(key, value1, (int)n_value2, v_value2, p);
             pthread_mutex_unlock(&mutex);
 
+            // Si la operacion de envío del resultado al cliente falla, retornamos -1 para indicar un error.
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
             break;
 
         case OP_GET_VALUE:
+        // Comprobamos que la operación de recepción de la clave solicitada por el cliente se realice correctamente. Si falla, retornamos -1 para indicar un error
             if (recv_fixed_string(sc, key) < 0) {
                 return -1;
             }
 
             {
+                // Declaramos variables locales para almacenar los valores obtenidos de get_value, ya que los punteros de salida se asignarán a estas variables locales
                 int n_local = 0;
 
+                // Protegemos la llamada a get_value con el mutex para evitar condiciones de carrera entre clientes concurrentes
                 pthread_mutex_lock(&mutex);
                 result = get_value(key, value1, &n_local, v_value2, &p);
                 pthread_mutex_unlock(&mutex);
 
+                // Copiamos el valor de n_local a n_value2 para enviarlo al cliente, ya que n_value2 es la variable que se enviará al cliente como parte de la respuesta
                 n_value2 = n_local;
             }
 
+            // Si la operación de envío del resultado al cliente falla, retornamos -1 para indicar un error. 
             if (send_int32(sc, result) < 0) {
                 return -1;
             }
 
+            // Si el resultado es 0, significa que se obtuvo el valor correctamente, por lo que procedemos a enviar los datos asociados al valor al cliente
             if (result == 0) {
                 if (send_fixed_string(sc, value1) < 0 ||
                     send_int32(sc, n_value2) < 0 ||
