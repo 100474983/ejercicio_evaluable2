@@ -6,18 +6,15 @@
 
 #define NUM_HILOS 20
 
-/*==============================
-  TEST DE CONCURRENCIA
-================================
+/*
 Realizamos un test para probar la concurrencia del servidor en el manejo de varias peticiones simultaneas de clientes.
-Para ello creamos varios hilos que realizan operaciones sobre claves diferentes a la vez. De esta manera podemos 
-asegurar que el servidor maneja correctamente las solicitudes concurrentes.*/
+Para ello creamos varios hilos que realizan operaciones sobre claves diferentes a la vez.*/
 
 // Función de trabajo para cada hilo, que realiza varias operaciones sobre la clave correspondiente a su ID
 void *worker(void *arg) {
     int id = *(int *)arg;
 
-    // Creamos la clave específica para este hilo, por ejemplo "clave_0", "clave_1", etc.
+    // Creamos la clave específica para este hilo
     char key[50];
     sprintf(key, "clave_%d", id);
 
@@ -54,7 +51,8 @@ int main() {
     pthread_t hilos[NUM_HILOS];
     int ids[NUM_HILOS];
 
-    destroy();  // limpiamos antes
+    // Antes de iniciar los hilos limpiamos el servidor de posibles datos residuales de pruebas anteriores
+    destroy();  
 
     // Creamos NUM_HILOS hilos que ejecutan la función worker, pasando su ID como argumento
     for (int i = 0; i < NUM_HILOS; i++) {

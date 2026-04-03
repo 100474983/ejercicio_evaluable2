@@ -4,9 +4,7 @@
 #include <pthread.h>
 #include "claves.h"
 
-/* =========================================================
- * Nodo de la lista enlazada
- * ========================================================= */
+/* Creamos la estructura Nodo para la lista enlazada */
 typedef struct Nodo {
     char key[256];
     char value1[256];
@@ -16,16 +14,11 @@ typedef struct Nodo {
     struct Nodo *siguiente;
 } Nodo;
 
-/* =========================================================
- * Cabeza de la lista y mutex para atomicidad
- * ========================================================= */
+/* Inicializamos el puntero al primer elemento de la lista y el mutex que usaremos para evitar condiciones de carrera */
 static Nodo *cabeza = NULL;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* =========================================================
- * Función auxiliar interna: busca un nodo por clave.
- * IMPORTANTE: llamar siempre con el mutex ya adquirido.
- * ========================================================= */
+/* Esta función busca un nodo por clave*/
 static Nodo *buscar_nodo(const char *key) {
     Nodo *actual = cabeza;
     while (actual != NULL) {
@@ -35,31 +28,25 @@ static Nodo *buscar_nodo(const char *key) {
     }
     return NULL;
 }
-
-/* =========================================================
- * destroy: elimina todas las tuplas almacenadas.
- * ========================================================= */
 int destroy(void) {
-    pthread_mutex_lock(&mutex);
+    /* Adquirimos el mutex para evitar condiciones de carrera */
+    pthread_mutex_lock(&mutex); 
 
     Nodo *actual = cabeza;
     while (actual != NULL) {
         Nodo *siguiente = actual->siguiente;
-        free(actual);
+        /* En cada iteración se libera la memoria del nodo actual */
+        free(actual);  
         actual = siguiente;
     }
     cabeza = NULL;
-
-    pthread_mutex_unlock(&mutex);
+    /* Una vez terminado liberamos el mutex*/
+    pthread_mutex_unlock(&mutex); 
     return 0;
 }
 
-/* =========================================================
- * set_value: inserta una nueva tupla.
- * Error si la clave ya existe o N_value2 está fuera de rango.
- * ========================================================= */
 int set_value(char *key, char *value1, int N_value2, float *V_value2, struct Paquete value3) {
-    /* Validaciones previas */
+    /* Hacemos algunas comprobaciones iniciales */
     if (key == NULL || value1 == NULL || V_value2 == NULL)
         return -1;
     if (N_value2 < 1 || N_value2 > 32)
@@ -67,25 +54,26 @@ int set_value(char *key, char *value1, int N_value2, float *V_value2, struct Paq
     if (strlen(key) > 255 || strlen(value1) > 255)
         return -1;
 
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex); 
 
-    /* Comprobar que la clave no existe ya */
+    /* No permitimos claves duplicadas */
     if (buscar_nodo(key) != NULL) {
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&mutex); 
         return -1;
     }
 
-    /* Crear nuevo nodo */
+    /* Creamos el nuevo nodo con una asignación de memoria dinámica */
     Nodo *nuevo = (Nodo *)malloc(sizeof(Nodo));
     if (nuevo == NULL) {
         pthread_mutex_unlock(&mutex);
         return -1;
     }
 
-    strncpy(nuevo->key,    key,    255); nuevo->key[255]    = '\0';
+    strncpy(nuevo->key, key, 255); nuevo->key[255] = '\0';
     strncpy(nuevo->value1, value1, 255); nuevo->value1[255] = '\0';
     nuevo->N_value2 = N_value2;
-    memset(nuevo->V_value2, 0, 32 * sizeof(float));
+    /* Inicializamos todo el array antes de copiar */
+    memset(nuevo->V_value2, 0, 32 * sizeof(float));  
     memcpy(nuevo->V_value2, V_value2, N_value2 * sizeof(float));
     nuevo->value3 = value3;
     nuevo->siguiente = cabeza;
@@ -95,9 +83,7 @@ int set_value(char *key, char *value1, int N_value2, float *V_value2, struct Paq
     return 0;
 }
 
-/* =========================================================
- * get_value: obtiene los valores asociados a una clave.
- * ========================================================= */
+/* Con esta función se obtienen los valores asociados a una clave*/
 int get_value(char *key, char *value1, int *N_value2, float *V_value2, struct Paquete *value3) {
     if (key == NULL || value1 == NULL || N_value2 == NULL || V_value2 == NULL || value3 == NULL)
         return -1;
@@ -119,9 +105,7 @@ int get_value(char *key, char *value1, int *N_value2, float *V_value2, struct Pa
     return 0;
 }
 
-/* =========================================================
- * modify_value: modifica los valores de una clave existente.
- * ========================================================= */
+/* Con esta función se modifican los valores asociados a una clave existente */
 int modify_value(char *key, char *value1, int N_value2, float *V_value2, struct Paquete value3) {
     if (key == NULL || value1 == NULL || V_value2 == NULL)
         return -1;
@@ -147,9 +131,7 @@ int modify_value(char *key, char *value1, int N_value2, float *V_value2, struct 
     return 0;
 }
 
-/* =========================================================
- * delete_key: elimina la tupla con la clave indicada.
- * ========================================================= */
+/* Con esta función se elimina una clave existente */
 int delete_key(char *key) {
     if (key == NULL)
         return -1;
@@ -174,12 +156,11 @@ int delete_key(char *key) {
     }
 
     pthread_mutex_unlock(&mutex);
-    return -1; /* clave no encontrada */
+    /* En caso de no encontrar la clave */
+    return -1; 
 }
 
-/* =========================================================
- * exist: comprueba si existe una tupla con la clave dada.
- * ========================================================= */
+/* Con esta función verificamos si una clave existe */
 int exist(char *key) {
     if (key == NULL)
         return -1;

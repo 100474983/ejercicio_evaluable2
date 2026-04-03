@@ -27,7 +27,8 @@ enum {
 
 /* Función para enviar un entero de 32 bits a través del socket con las funciones de envío */
 static int send_int32(int sd, int32_t value) {
-    int32_t net_value = htonl(value); // Convertir a orden de bytes de red (big endian)
+    // Convertimos a orden de bytes de red 
+    int32_t net_value = htonl(value); 
     return sendMessage(sd, (char *)&net_value, sizeof(net_value));
 }
 
@@ -37,15 +38,18 @@ static int recv_int32(int sd, int32_t *value) {
     if (recvMessage(sd, (char *)&net_value, sizeof(net_value)) < 0) {
         return -1;
     }
-    *value = ntohl(net_value); // Convertir de orden de bytes de red a host 
+    // Convertimos de orden de bytes de red a host 
+    *value = ntohl(net_value); 
     return 0;
 }
 
 /* Función para enviar un array de floats a través del socket */
 static int send_float_array(int sd, const float *values, int n_values) {
     for (int i = 0; i < n_values; i++) {
-        uint32_t bits; // Usamos uint32_t para manipular los bits del float
-        memcpy(&bits, &values[i], sizeof(bits)); // Copiamos los bits del float al uint32_t
+        // Usamos uint32_t para manipular los bits del float
+        uint32_t bits; 
+        // Copiamos los bits del float al uint32_t
+        memcpy(&bits, &values[i], sizeof(bits)); 
         bits = htonl(bits);
         if (sendMessage(sd, (char *)&bits, sizeof(bits)) < 0) {
             return -1;
@@ -57,12 +61,12 @@ static int send_float_array(int sd, const float *values, int n_values) {
 /* Función para recibir un array de floats a través del socket */
 static int recv_float_array(int sd, float *values, int n_values) {
     for (int i = 0; i < n_values; i++) {
-        uint32_t bits; // Volvemos a usar uint32_t para recibir los bits del float
+        uint32_t bits; 
         if (recvMessage(sd, (char *)&bits, sizeof(bits)) < 0) {
             return -1;
         }
         bits = ntohl(bits);
-        memcpy(&values[i], &bits, sizeof(bits)); // Copiamos los bits recibidos al float
+        memcpy(&values[i], &bits, sizeof(bits)); 
     }
     return 0;
 }
@@ -70,9 +74,11 @@ static int recv_float_array(int sd, float *values, int n_values) {
 /* Función para enviar una cadena de caracteres de longitud fija a través del socket */
 static int send_fixed_string(int sd, const char *value) {
     char buffer[256];
-    memset(buffer, 0, sizeof(buffer)); // Inicializamos el buffer con ceros
+    // Inicializamos el buffer con ceros
+    memset(buffer, 0, sizeof(buffer)); 
     if (value != NULL) {
-        strncpy(buffer, value, sizeof(buffer) - 1); // Copiamos la cadena al buffer asegurándonos de no exceder el tamaño
+        // Copiamos la cadena al buffer asegurándonos de no exceder el tamaño
+        strncpy(buffer, value, sizeof(buffer) - 1); 
     }
     return sendMessage(sd, buffer, sizeof(buffer));
 }
@@ -87,17 +93,19 @@ static int recv_fixed_string(int sd, char *value) {
 }
 
 /* Función para leer el puerto del servidor desde una variable de entorno.
-Si la variable de entorno no está definida o está vacía, se utiliza un puerto por defecto */
+Si la variable de entorno no está definida o está vacía se utiliza un puerto por defecto */
 static int read_server_port(void) {
-    const char *port_env = getenv("PORT_TUPLAS"); // Leer la variable de entorno PORT_TUPLAS
+    const char *port_env = getenv("PORT_TUPLAS"); 
     if (port_env == NULL || *port_env == '\0') {
-        return DEFAULT_SERVER_PORT; // Si no está definida o está vacía, retornar el puerto por defecto
+        return DEFAULT_SERVER_PORT; 
     }
 
-    char *endptr = NULL; // Puntero para almacenar el final de la cadena analizada
-    long parsed = strtol(port_env, &endptr, 10); // Convertimos el puerto a un número entero
+    // Puntero para almacenar el final de la cadena analizada
+    char *endptr = NULL; 
+     // Convertimos el puerto a un número entero
+    long parsed = strtol(port_env, &endptr, 10);
     if (endptr == port_env || *endptr != '\0' || parsed < 1 || parsed > 65535) {
-        return DEFAULT_SERVER_PORT; // Si la conversión falla o el número no es un puerto válido, retornar el puerto por defecto
+        return DEFAULT_SERVER_PORT; 
     }
     return (int)parsed;
 }
@@ -105,39 +113,44 @@ static int read_server_port(void) {
 /* Función para conectar al servidor */
 static int connect_server(void) {
     int sd = -1;
-    struct sockaddr_in server_addr; // Estructura para la dirección del servidor
-    const char *server_ip = getenv("IP_TUPLAS"); // Leer la variable de entorno IP_TUPLAS para obtener la dirección IP del servidor
-    int server_port = read_server_port(); // Obtener el puerto del servidor utilizando la función read_server_port
+    struct sockaddr_in server_addr; 
+    // Lectura de la variable de entorno IP_TUPLAS para obtener la dirección IP del servidor
+    const char *server_ip = getenv("IP_TUPLAS"); 
+    // Obtención del puerto del servidor 
+    int server_port = read_server_port(); 
 
     if (server_ip == NULL || *server_ip == '\0') {
-        server_ip = DEFAULT_SERVER_IP; // Si la variable de entorno no está definida o está vacía, usar la dirección IP por defecto
+        // Se utiliza la IP por defecto si la var de entorno no está definida o está vacía
+        server_ip = DEFAULT_SERVER_IP; 
     }
 
-    // Crear el socket para la conexión TCP
+    // Socket para la conexión TCP
     sd = socket(AF_INET, SOCK_STREAM, 0);
     if (sd < 0) {
         return -1;
     }
 
-    // Configurar la dirección del servidor
-    memset(&server_addr, 0, sizeof(server_addr)); // Inicializar la estructura con ceros
-    server_addr.sin_family = AF_INET; // Familia de direcciones IPv4
-    server_addr.sin_port = htons((uint16_t)server_port); // Convertir el puerto a orden de bytes de red
-    // Convertir la dirección IP del servidor de texto a formato binario con la función inet_pton()
+    // Configuración de la dirección del servidor
+    memset(&server_addr, 0, sizeof(server_addr)); 
+    server_addr.sin_family = AF_INET; 
+    // Conversión del puerto a orden de bytes de red
+    server_addr.sin_port = htons((uint16_t)server_port); 
+    // Conversión de la dirección IP del servidor de texto a formato binario
     if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) != 1) {
 
-        // Si la dirección IP no es válida, intentamos resolverla como un nombre de host utilizando la función gethostbyname()
-        struct hostent *he = gethostbyname(server_ip); // Convertimos el nombre de host a una estructura hostent
-        // Si la resolución falla, cerramos el socket y retornamos -1 para indicar un error
+        /* Si la dirección IP no es válida, intentamos resolverla como un nombre de host 
+        Convertimos el nombre de host a una estructura hostent*/
+        struct hostent *he = gethostbyname(server_ip); 
+        // Si la resolución falla, cerramos el socket y devolvemos -1 para indicar un error
         if (he == NULL) {
             close(sd);
             return -1;
         }
-        // Copiamos la dirección IP resuelta al campo sin_addr de la estructura server_addr utilizando memcpy()
+        // Copiamos la dirección IP resuelta al campo sin_addr de la estructura server_addr 
         memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
     }
 
-    // Nos conectamos al servidor usanod el socket creado y la dirección configurada
+    // Nos conectamos al servidor usando el socket creado y la dirección configurada
     if (connect(sd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         close(sd);
         return -1;
@@ -145,19 +158,18 @@ static int connect_server(void) {
 
     return sd;
 }
-/* =============================================
-   FUNCIONES DE LA API PARA LLAMADAS AL SERVIDOR
-   =============================================*/
+/* FUNCIONES DE LA API PARA LLAMADAS AL SERVIDOR */
 
 int destroy(void) {
-    int sd = connect_server(); // Abrimos una conexión TCP con el servidor
-    int32_t result; // Variable para almacenar el resultado de la operación
+    // Abrimos una conexión TCP con el servidor
+    int sd = connect_server(); 
+    int32_t result; 
 
     if (sd < 0) {
         return -1;
     }
-    // Enviamos la operación OP_DESTROY al servidor y esperamos la respuesta con el resultado de la operación
-    // Si falla el envío o la recepción, cerramos el socket y retornamos -1 para indicar un error
+    /* Enviamos la operación OP_DESTROY al servidor y esperamos la respuesta con el resultado de la operación
+       Si falla el envío o la recepción, cerramos el socket y retornamos -1 para indicar un error */
     if (send_int32(sd, OP_DESTROY) < 0 || recv_int32(sd, &result) < 0) {
         close(sd);
         return -1;
@@ -176,19 +188,19 @@ int set_value(char *key, char *value1, int N_value2, float *V_value2, struct Paq
         return -1;
     }
 
-    // Abrimos una conexión TCP con el servidor utilizando la función connect_server()
+    // Abrimos una conexión TCP con el servidor 
     sd = connect_server();
     if (sd < 0) {
         return -1;
     }
 
-    // Enviamos la operación OP_SET_VALUE al servidor junto con los parámetros necesarios para establecer el valor.
-    // Si falla el envío o la recepción, cerramos el socket y retornamos -1 para indicar un error
+    /* Enviamos la operación OP_SET_VALUE al servidor junto con los parámetros necesarios para establecer el valor.
+       Si falla el envío o la recepción, cerramos el socket y retornamos -1 para indicar un error */
     if (send_int32(sd, OP_SET_VALUE) < 0 ||
         send_fixed_string(sd, key) < 0 ||
         send_fixed_string(sd, value1) < 0 ||
         send_int32(sd, N_value2) < 0 ||
-        send_float_array(sd, V_value2, 32) < 0 ||
+        send_float_array(sd, V_value2, N_value2) < 0 ||
         send_int32(sd, value3.x) < 0 ||
         send_int32(sd, value3.y) < 0 ||
         send_int32(sd, value3.z) < 0 ||
@@ -204,8 +216,8 @@ int set_value(char *key, char *value1, int N_value2, float *V_value2, struct Paq
 int get_value(char *key, char *value1, int *N_value2, float *V_value2, struct Paquete *value3) {
     int sd = -1;
     int32_t result;
-    int32_t n_recv; // Variable para almacenar el valor de N_value2 recibido del servidor
-    int32_t x, y, z; // Variables para almacenar los valores de x, y, z de la estructura Paquete redibidos del servidor
+    int32_t n_recv;
+    int32_t x, y, z; /
 
     if (key == NULL || value1 == NULL || N_value2 == NULL || V_value2 == NULL || value3 == NULL) {
         return -1;
@@ -216,9 +228,9 @@ int get_value(char *key, char *value1, int *N_value2, float *V_value2, struct Pa
         return -1;
     }
 
-    // Enviamos la operación OP_GET_VALUE al servidor junto con la clave para obtener el valor asociado.
-    // Luego esperamos la respuesta del servidor con el resultado de la operación
-    // Si el resultado es diferente de 0, significa que hubo un error al obtener el valor
+    /* Enviamos la operación OP_GET_VALUE al servidor junto con la clave para obtener el valor asociado.
+       Luego esperamos la respuesta del servidor con el resultado de la operación
+       Si el resultado es diferente de 0, significa que hubo un error al obtener el valor */
     if (send_int32(sd, OP_GET_VALUE) < 0 ||
         send_fixed_string(sd, key) < 0 ||
         recv_int32(sd, &result) < 0) {
@@ -231,11 +243,14 @@ int get_value(char *key, char *value1, int *N_value2, float *V_value2, struct Pa
         return (int)result;
     }
 
-    // Si el resultado es 0, significa que se obtuvo el valor correctamente, por lo que procedemos a recibir los datos asociados al valor
-    // Si falla la recepción de cualquiera de los datos, cerramos el socket y retornamos -1 para indicar un error
+    /* Si el resultado es 0, recibimos los datos. Primero recibimos value1 y n_recv,
+       y luego usamos n_recv para saber cuántos floats leer. */
     if (recv_fixed_string(sd, value1) < 0 ||
-        recv_int32(sd, &n_recv) < 0 ||
-        recv_float_array(sd, V_value2, 32) < 0 ||
+        recv_int32(sd, &n_recv) < 0) {
+        close(sd);
+        return -1;
+    }
+    if (recv_float_array(sd, V_value2, (int)n_recv) < 0 ||
         recv_int32(sd, &x) < 0 ||
         recv_int32(sd, &y) < 0 ||
         recv_int32(sd, &z) < 0) {
@@ -264,13 +279,13 @@ int modify_value(char *key, char *value1, int N_value2, float *V_value2, struct 
     if (sd < 0) {
         return -1;
     }
-    // Comprobamos que todas las operaciones, tanto las de envío como las de recepción, se realicen correctamente.
-    // Si alguna falla, cerramos el socket y retornamos -1 para indicar un error
+    /* Comprobamos que todas las operaciones, tanto las de envío como las de recepción, se realicen correctamente.
+       Si alguna falla, cerramos el socket y retornamos -1 para indicar un error */
     if (send_int32(sd, OP_MODIFY_VALUE) < 0 ||
         send_fixed_string(sd, key) < 0 ||
         send_fixed_string(sd, value1) < 0 ||
         send_int32(sd, N_value2) < 0 ||
-        send_float_array(sd, V_value2, 32) < 0 ||
+        send_float_array(sd, V_value2, N_value2) < 0 ||
         send_int32(sd, value3.x) < 0 ||
         send_int32(sd, value3.y) < 0 ||
         send_int32(sd, value3.z) < 0 ||
